@@ -1,12 +1,29 @@
+
 const { Kafka } = require("kafkajs");
 const config = require("./config");
+const admin = require("firebase-admin");
 
+const serviceAccount = require("./firebase-service-account.json");
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+  databaseURL: config.firebase.databaseURL || "https://hack-b2700-default-rtdb.asia-southeast1.firebasedatabase.app"
+});
+
+const db = admin.database();
 const kafka = new Kafka({
   clientId: config.kafka.clientId,
   brokers: config.kafka.brokers,
 });
-
 const producer = kafka.producer();
+
+function getBiasedCurrent() {
+  const p = Math.random();
+  if (p < 0.49) return (5 + Math.random() * 4.9).toFixed(2);
+  if (p < 0.73) return (10 + Math.random() * 4.9).toFixed(2);
+  if (p < 0.97) return (15 + Math.random() * 5).toFixed(2);
+  return (20.1 + Math.random() * 4.9).toFixed(2);
+}
 
 const sendMotorData = async () => {
   try {
@@ -15,47 +32,52 @@ const sendMotorData = async () => {
 
     setInterval(async () => {
       const messages = [];
+      const updates = {}; 
+
+      const baseRef = db.ref('motorData');
+
       for (let i = 1; i <= 100; i++) {
         const data = {
           deviceId: `motor-${i}`,
-          temperature: (40 + Math.random() * 55).toFixed(2),
-          pressure: (900 + Math.random() * 200).toFixed(2),
-          current: getBiasedCurrent(),
+          temperature: parseFloat((40 + Math.random() * 55).toFixed(2)),
+          pressure: parseFloat((900 + Math.random() * 200).toFixed(2)),
+          current: parseFloat(getBiasedCurrent()),
           timestamp: new Date().toISOString(),
+          createdAt: admin.database.ServerValue.TIMESTAMP,
         };
-        messages.push({ value: JSON.stringify(data) });
+
+        const pushKey = baseRef.push().key;
+        updates[`motorData/${pushKey}`] = data;
+
+        messages.push({
+          value: JSON.stringify({
+            ...data,
+            source: "realtime",
+            rtdbKey: pushKey,
+            batchId: Date.now()
+          })
+        });
       }
 
-      await producer.send({
-        topic: config.kafka.topic,
-        messages,
-      });
+      try {
+        await db.ref().update(updates);
+        console.info(`Stored ${Object.keys(updates).length} records in Realtime DB`);
 
-      console.info(`Sent batch of 100 motor readings at ${new Date().toLocaleTimeString()}`);
-    }, 2000);
-  } catch (error) {
-    console.error("Error starting producer:", error);
+        await producer.send({
+          topic: config.kafka.topic,
+          messages,
+        });
+
+        console.info(`Sent batch of ${messages.length} motor readings at ${new Date().toLocaleTimeString()}`);
+      } catch (err) {
+        console.error("Error in batch processing:", err);
+      }
+    }, 2000); 
+  } catch (err) {
+    console.error("Error starting producer:", err);
     process.exit(1);
   }
 };
-
-function getBiasedCurrent() {
-  const p = Math.random();
-
-  if (p < 0.49) {
-    // Morning slot (≈48-50%)
-    return (5 + Math.random() * 4.9).toFixed(2);
-  } else if (p < 0.73) {
-    // Night slot (≈23-24%)
-    return (10 + Math.random() * 4.9).toFixed(2);
-  } else if (p < 0.97) {
-    // Evening slot (≈23-24%)
-    return (15 + Math.random() * 5).toFixed(2);
-  } else {
-    // Excluded (≈2-4%)
-    return (20.1 + Math.random() * 4.9).toFixed(2);
-  }
-}
 
 const gracefulShutdown = async () => {
   console.info("Producer is shutting down...");
