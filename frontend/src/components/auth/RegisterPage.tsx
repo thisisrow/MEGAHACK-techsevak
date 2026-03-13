@@ -28,7 +28,16 @@ export default function RegisterPage() {
       // First user always becomes admin
       const assignedRole: Role = isFirstUser ? 'admin' : role;
       await register(email, password, name, assignedRole);
-      navigate('/');
+      
+      if (isFirstUser) {
+        navigate('/'); // Only navigate if they just created their own admin account
+      } else {
+        // Reset form for admins adding multiple users
+        setName('');
+        setEmail('');
+        setPassword('');
+        alert(`Successfully registered ${name} as ${assignedRole}`);
+      }
     } catch (err: any) {
       if (err.code === 'auth/email-already-in-use') {
         setError('Email already registered');

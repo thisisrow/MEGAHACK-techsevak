@@ -54,11 +54,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await signInWithEmailAndPassword(auth, email, password);
   };
 
+  // We initialize a secondary Firebase app strictly to handle admin-driven registrations 
+  // so the Admin doesn't get logged out of their primary session when they create an Operator.
   const register = async (email: string, password: string, name: string, role: Role) => {
-    const cred = await createUserWithEmailAndPassword(auth, email, password);
-    const userProfile: UserProfile = { uid: cred.user.uid, email, name, role };
-    await setDoc(doc(db, 'users', cred.user.uid), userProfile);
-    setProfile(userProfile);
+    // Determine if this is the very first user (no one is logged in yet)
+    const isInitialSetup = !auth.currentUser;
+
+    if (isInitialSetup) {
+      // Standard registration for the very first Admin
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      const userProfile: UserProfile = { uid: cred.user.uid, email, name, role };
+      await setDoc(doc(db, 'users', cred.user.uid), userProfile);
+      setProfile(userProfile);
+    } else {
+      // Secondary App approach for Admins registering Operators/others
+      const { initializeApp } = await import('firebase/app');
+      const { getAuth, createUserWithEmailAndPassword } = await import('firebase/auth');
+      
+      const secondaryApp = initializeApp(auth.app.options, 'Secondary Registration App');
+      const secondaryAuth = getAuth(secondaryApp);
+
+      const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+      
+      // Save the user profile to Firestore (using the primary db app)
+      const userProfile: UserProfile = { uid: cred.user.uid, email, name, role };
+      await setDoc(doc(db, 'users', cred.user.uid), userProfile);
+
+      // We immediately sign the purely newly created user out of the secondary app
+      await secondaryAuth.signOut();
+    }
   };
 
   const logout = async () => {

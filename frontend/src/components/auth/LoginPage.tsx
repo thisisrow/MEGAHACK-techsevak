@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
 export default function LoginPage() {
@@ -70,12 +70,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="mt-4 text-sm text-gray-500 text-center">
-          Don't have an account?{' '}
-          <Link to="/register" className="text-blue-700 font-medium hover:underline">
-            Register
-          </Link>
-        </p>
+        {/* Removed public register link for internal access control */}
       </div>
     </div>
   );
