@@ -13,8 +13,10 @@ export default function RegisterPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Only admin can register new users (except very first registration)
-  const isFirstUser = !profile;
+  // Hybrid Setup: 
+  // - If someone is logged in (they must be an admin due to ProtectedRoue), they are provisioning an employee.
+  // - If NO ONE is logged in, this is a new public Customer creating an account from the Pricing page.
+  const isPublicRegistration = !profile;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,14 +27,15 @@ export default function RegisterPage() {
     }
     setLoading(true);
     try {
-      // First user always becomes admin
-      const assignedRole: Role = isFirstUser ? 'admin' : role;
+      // Public customers always become the admin of their new workspace
+      const assignedRole: Role = isPublicRegistration ? 'admin' : role;
       await register(email, password, name, assignedRole);
       
-      if (isFirstUser) {
-        navigate('/'); // Only navigate if they just created their own admin account
+      if (isPublicRegistration) {
+        // A new customer just signed up (or the very first system admin)
+        navigate('/'); 
       } else {
-        // Reset form for admins adding multiple users
+        // Reset form for logged-in admins adding multiple users
         setName('');
         setEmail('');
         setPassword('');
@@ -56,10 +59,10 @@ export default function RegisterPage() {
         <p className="text-gray-500 mb-6 text-sm">Industrial IoT Monitoring System</p>
 
         <h2 className="text-xl font-bold text-gray-700 mb-1">
-          {isFirstUser ? 'Create Admin Account' : 'Register New User'}
+          {isPublicRegistration ? 'Start your trial' : 'Register New Employee'}
         </h2>
-        {isFirstUser && (
-          <p className="text-xs text-blue-600 mb-4">First account will be created as Admin</p>
+        {isPublicRegistration && (
+          <p className="text-xs text-blue-600 mb-4">You will be designated as the central Administrator.</p>
         )}
 
         {error && (
@@ -127,7 +130,7 @@ export default function RegisterPage() {
           </button>
         </form>
 
-        {isFirstUser && (
+        {isPublicRegistration && (
           <p className="mt-4 text-sm text-gray-500 text-center">
             Already have an account?{' '}
             <Link to="/login" className="text-blue-700 font-medium hover:underline">
